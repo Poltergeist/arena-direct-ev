@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MTG Arena Direct — EV Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --border: #2a313c;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #ff8a3d;
+    --accent-2: #ffb86b;
+    --good: #3fb950;
+    --bad:  #f85149;
+    --blue: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  header {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #1a1f2a 0%, #0e1117 100%);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  main {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 18px;
+    padding: 18px 28px 40px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel h2 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  label.row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin: 8px 0; font-size: 13px;
+  }
+  label.row span.lbl { color: var(--muted); }
+  label.row input[type="number"], label.row select {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    width: 130px;
+    font-size: 13px;
+    text-align: right;
+  }
+  label.row select { width: 100%; max-width: 250px; text-align: left; }
+  input[type="range"] { width: 100%; }
+  .slider-row { margin: 10px 0; }
+  .slider-row .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .slider-row .top b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  table.rewards {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  table.rewards th, table.rewards td {
+    border-bottom: 1px solid var(--border);
+    padding: 4px 4px;
+    text-align: right;
+    vertical-align: middle;
+  }
+  table.rewards th:first-child, table.rewards td:first-child { text-align: left; }
+  table.rewards th { color: var(--muted); font-weight: 500; font-size: 11px; }
+  table.rewards input { width: 100%; background: transparent; border: 1px solid transparent; color: var(--text); text-align: right; padding: 2px 3px; font-size: 12px; border-radius: 3px; }
+  table.rewards input:focus, table.rewards input:hover { outline: none; border-color: var(--border); background: var(--panel-2); }
+  table.rewards td.tot { font-weight: 600; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+  table.rewards tr.maxrow td { background: rgba(255,138,61,0.05); }
+  table.rewards tr.skipped td { opacity: 0.35; text-decoration: line-through; }
+  table.rewards tr.skipped td.tot { color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stats.stats-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 1080px) { .stats.stats-3 { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .val { font-size: 20px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat .val.good { color: var(--good); }
+  .stat .val.bad { color: var(--bad); }
+  .stat .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .chart-wrap { position: relative; height: 280px; }
+  .chart-wrap.tall { height: 340px; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .pill.fmt { background: rgba(255,138,61,0.12); color: var(--accent-2); border-color: rgba(255,138,61,0.3); }
+
+  button.btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  button.btn:hover { border-color: var(--accent); color: var(--accent-2); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a1006; font-weight: 600; }
+  button.btn.primary:hover { background: var(--accent-2); }
+  .row-buttons { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+  .note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .note code { background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
+
+  .toggles {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin: 6px 0;
+  }
+  .toggle {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .toggle.on { border-color: var(--accent); background: rgba(255,138,61,0.07); }
+  .toggle.full { margin-bottom: 8px; }
+  .toggle.full .top { gap: 12px; }
+  .toggle.full .note { font-size: 11px; color: var(--muted); flex: 1; text-align: right; }
+  .toggle.full.on .note { color: var(--accent-2); }
+  .toggle .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .toggle .top label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .toggle .top input[type="checkbox"] { accent-color: var(--accent); }
+  .toggle input[type="number"] {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-top: 6px;
+    text-align: right;
+  }
+
+  details.adv summary {
+    cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; padding: 4px 0;
+  }
+  details.adv[open] summary { color: var(--accent-2); }
+
+  .source { font-size: 11px; color: var(--muted); }
+  .source a { color: var(--blue); text-decoration: none; }
+  .source a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1><span>MTGA</span> Arena Direct — EV Calculator</h1>
+    <div class="sub">7W / 2L race · 💎 · packs · physical prize · Monte Carlo bankroll</div>
+  </div>
+  <div>
+    <span class="pill" id="formatPill">Bo1</span>
+    <span class="pill" id="winsPill">7W / 2L</span>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Controls -->
+  <section>
+    <div class="panel">
+      <h2>Event</h2>
+      <label class="row">
+        <span class="lbl">Preset</span>
+        <select id="preset"></select>
+      </label>
+      <label class="row">
+        <span class="lbl">Format</span>
+        <select id="fmt">
+          <option value="Bo1">Sealed / Draft (Bo1)</option>
+          <option value="Bo3">Bo3</option>
+        </select>
+      </label>
+      <label class="row">
+        <span class="lbl">Entry (💎)</span>
+        <input type="number" id="entry" min="0" step="100" value="6000" />
+      </label>
+      <label class="row">
+        <span class="lbl">Max wins</span>
+        <input type="number" id="maxW" min="1" max="12" step="1" value="7" />
+      </label>
+      <label class="row">
+        <span class="lbl">Max losses</span>
+        <input type="number" id="maxL" min="1" max="6" step="1" value="2" />
+      </label>
+
+      <h2 style="margin-top:14px;">Reward conversions</h2>
+      <div class="toggle full" id="stopToggle">
+        <div class="top">
+          <label><input type="checkbox" id="stopAtLastGem" /> Stop at last gem tier</label>
+          <span class="note" id="stopHint" style="margin:0;"></span>
+        </div>
+      </div>
+      <div class="toggles">
+        <div class="toggle" id="packsToggle">
+          <div class="top"><label><input type="checkbox" id="usePacks" /> Include packs</label></div>
+          <input type="number" id="packGems" min="0" step="10" value="200" />
+          <div class="note" style="margin-top:4px;">💎 per pack</div>
+        </div>
+        <div class="toggle" id="physToggle">
+          <div class="top"><label><input type="checkbox" id="usePhys" /> Include physical prize</label></div>
+          <input type="number" id="usdGems" min="0" step="10" value="184" />
+          <div class="note" style="margin-top:4px;">💎 per $1 (≈9,200💎 for $50)</div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:14px;">Reward table</h2>
+      <table class="rewards" id="rewardTable"></table>
+      <div class="note">
+        Edit any cell. <b>Total 💎</b> = 💎 + packs × pack-value + physical $ × 💎/$. Toggle conversions above to honor 💎-only or include the full prize.
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <h2>Your edge</h2>
+      <div class="slider-row">
+        <div class="top"><span>Match win rate</span><b><span id="wrLbl">55</span>%</b></div>
+        <input type="range" id="wr" min="20" max="85" step="0.5" value="55" />
+      </div>
+      <div class="slider-row">
+        <div class="top"><span>Starting capital (💎)</span><b><span id="capLbl">25,000</span></b></div>
+        <input type="range" id="cap" min="0" max="500000" step="1000" value="25000" />
+      </div>
+      <div class="slider-row">
+        <div class="top"><span>Number of attempts (Monte Carlo)</span><b><span id="runsLbl">2,000</span></b></div>
+        <input type="range" id="runs" min="200" max="10000" step="100" value="2000" />
+      </div>
+      <div class="slider-row">
+        <div class="top"><span>Max events to play if bankroll allows</span><b><span id="eventsLbl">20</span></b></div>
+        <input type="range" id="events" min="1" max="200" step="1" value="20" />
+      </div>
+      <div class="row-buttons">
+        <button class="btn primary" id="runMC">Re-run simulation</button>
+        <button class="btn" id="resetPreset">Reset preset</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <h2>Headline numbers</h2>
+      <div class="stats stats-3">
+        <div class="stat">
+          <div class="lbl">EV per entry</div>
+          <div class="val" id="evVal">—</div>
+          <div class="sub" id="evSub">net of entry · 💎-equivalent</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">EV as % of entry</div>
+          <div class="val" id="evPct">—</div>
+          <div class="sub">>0% means +EV</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Break-even win rate</div>
+          <div class="val" id="beVal">—</div>
+          <div class="sub">match WR for net EV = 0</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Avg matches</div>
+          <div class="val" id="avgMatches">—</div>
+          <div class="sub">expected length of run</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">E[packs] per entry</div>
+          <div class="val" id="evPacks">—</div>
+          <div class="sub">expected digital packs</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">E[boxes] per entry</div>
+          <div class="val" id="evBoxes">—</div>
+          <div class="sub">expected physical boxes</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="source">
+        Reward structure source: <a href="https://draftsim.com/mtg-arena-direct/" target="_blank">Draftsim — Everything You Need to Know About MTG Arena Direct</a> (last updated April 2026). Race ends at 7 wins or 2 losses, Bo1.
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Charts -->
+  <section>
+    <div class="panel">
+      <h2>Win distribution at current win rate</h2>
+      <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+      <div class="note">Probability of finishing the event with exactly <b>k</b> wins (race ends at <span id="distMaxW">7</span> wins or <span id="distMaxL">2</span> losses).</div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <h2>EV vs win rate</h2>
+      <div class="chart-wrap"><canvas id="evChart"></canvas></div>
+      <div class="note">Net EV (💎-equivalent) as match win rate sweeps 30%–80%. Green = profitable, red = losing. Orange dot = your current WR.</div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <h2>Bankroll Monte Carlo</h2>
+      <div class="chart-wrap tall"><canvas id="mcChart"></canvas></div>
+      <div class="stats" style="margin-top: 12px; grid-template-columns: repeat(4, 1fr);">
+        <div class="stat">
+          <div class="lbl">Median ending bankroll</div>
+          <div class="val" id="mcMedian">—</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Mean ending bankroll</div>
+          <div class="val" id="mcMean">—</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Risk of ruin</div>
+          <div class="val" id="mcRuin">—</div>
+          <div class="sub">P(can't afford another entry)</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">P(double bankroll)</div>
+          <div class="val" id="mcDouble">—</div>
+          <div class="sub">end ≥ 2× start</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Mean events played</div>
+          <div class="val" id="mcEvents">—</div>
+          <div class="sub">before bankroll runs out</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Mean packs won</div>
+          <div class="val" id="mcPacks">—</div>
+          <div class="sub">total digital packs</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Mean boxes won</div>
+          <div class="val" id="mcBoxes">—</div>
+          <div class="sub">total physical boxes</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">P(≥1 physical box)</div>
+          <div class="val" id="mcAnyBox">—</div>
+          <div class="sub">odds of any box win</div>
+        </div>
+      </div>
+      <div class="note">
+        Each line is one bankroll path: start at your capital, pay an entry whenever you can, draw a random outcome, collect the reward at its current 💎-equivalent. Dashed grey line = starting capital, orange line = median path. Up to 60 paths are drawn for clarity; stats use all runs.
+      </div>
+    </div>
+
+    <details class="adv panel" style="margin-top:14px;">
+      <summary>Notes &amp; assumptions</summary>
+      <div class="note" style="font-size:12px;">
+        <p><b>Tournament model:</b> race — keep playing until <b>maxWins</b> wins or <b>maxLosses</b> losses, whichever comes first. Each match independent with probability <code>p = matchWinRate</code>.</p>
+        <p><b>Closed-form distribution:</b> for <code>k &lt; W</code>, <code>P(end at k wins) = C(k+L−1, L−1) · p^k · (1−p)^L</code>. For <code>k = W</code>, <code>P = Σ_{l=0..L−1} C(W+l−1, W−1) · p^W · (1−p)^l</code>. Sums to 1 by construction.</p>
+        <p><b>Reward conversion:</b> each tier has gems + pack count + physical-prize $ value. Gem-equivalent = gems + packs · packGems + physUSD · usdGems. Toggle either component on/off; defaults match your "gems only" preference.</p>
+        <p><b>Pack value of 200 gems</b> matches the gem-store pack price. <b>184 gems/$1</b> is derived from the $50 → 9,200 gems bundle (the rate gets worse on smaller bundles, so 184 is generous to physical-prize value).</p>
+        <p><b>Bo3 caveat:</b> if you only know game WR, convert with <code>p_match = p_game² · (3 − 2·p_game)</code> before plugging in.</p>
+        <p><b>Risk of ruin</b> = fraction of paths ending below the entry cost (i.e. you can't enter another event). Stats use all simulated runs.</p>
+      </div>
+    </details>
+  </section>
+</main>
+
+<script>
+/* ===========================================================
+ * Arena Direct presets — exact reward table per Draftsim
+ * (April 2026). All Bo1, race to 7 wins or 2 losses.
+ *
+ * Each tier has: { g: gems, p: packs, b: physicalBoxes, $: physicalPrizeUSD }
+ * Physical-prize USD values are typical MSRPs (editable).
+ * =========================================================== */
+const PRESETS = {
+  "Arena Direct — Standard, Play Booster Box (6,000g)": {
+    fmt: "Bo1", entry: 6000, maxW: 7, maxL: 2,
+    rewards: [
+      { g: 0,    p: 0,  b: 0, $: 0   }, // 0 wins
+      { g: 0,    p: 0,  b: 0, $: 0   }, // 1
+      { g: 0,    p: 0,  b: 0, $: 0   }, // 2
+      { g: 2700, p: 8,  b: 0, $: 0   }, // 3
+      { g: 5400, p: 16, b: 0, $: 0   }, // 4
+      { g: 8100, p: 24, b: 0, $: 0   }, // 5
+      { g: 0,    p: 0,  b: 1, $: 150 }, // 6 → 1 Play Booster Box (~$150 MSRP)
+      { g: 0,    p: 0,  b: 2, $: 300 }, // 7 → 2 Play Booster Boxes
+    ]
+  },
+  "Arena Direct — Standard, Collector Booster Box (6,000g)": {
+    fmt: "Bo1", entry: 6000, maxW: 7, maxL: 2,
+    rewards: [
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 2700,  p: 8,  b: 0, $: 0   },
+      { g: 5400,  p: 16, b: 0, $: 0   },
+      { g: 8100,  p: 24, b: 0, $: 0   },
+      { g: 10800, p: 32, b: 0, $: 0   }, // 6 → gems + packs (no box at 6 here)
+      { g: 0,     p: 0,  b: 1, $: 250 }, // 7 → 1 Collector Booster Box (~$250 MSRP)
+    ]
+  },
+  "Arena Direct — Universes Beyond, Play Booster Box (8,000g)": {
+    fmt: "Bo1", entry: 8000, maxW: 7, maxL: 2,
+    rewards: [
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 3600,  p: 8,  b: 0, $: 0   },
+      { g: 7200,  p: 16, b: 0, $: 0   },
+      { g: 10800, p: 24, b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 1, $: 150 }, // 6 → 1 UB Play Booster Box
+      { g: 0,     p: 0,  b: 2, $: 300 }, // 7 → 2 UB Play Booster Boxes
+    ]
+  },
+  "Arena Direct — Universes Beyond, Collector Booster Box (8,000g)": {
+    fmt: "Bo1", entry: 8000, maxW: 7, maxL: 2,
+    rewards: [
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 0,     p: 0,  b: 0, $: 0   },
+      { g: 3600,  p: 8,  b: 0, $: 0   },
+      { g: 7200,  p: 16, b: 0, $: 0   },
+      { g: 10800, p: 24, b: 0, $: 0   },
+      { g: 14400, p: 32, b: 0, $: 0   }, // 6 → gems + packs
+      { g: 0,     p: 0,  b: 1, $: 300 }, // 7 → 1 UB Collector Booster Box (~$300 MSRP)
+    ]
+  },
+  "Custom (start from blank)": {
+    fmt: "Bo1", entry: 6000, maxW: 7, maxL: 2,
+    rewards: [
+      { g: 0, p: 0, b: 0, $: 0 }, { g: 0, p: 0, b: 0, $: 0 }, { g: 0, p: 0, b: 0, $: 0 },
+      { g: 0, p: 0, b: 0, $: 0 }, { g: 0, p: 0, b: 0, $: 0 }, { g: 0, p: 0, b: 0, $: 0 },
+      { g: 0, p: 0, b: 0, $: 0 }, { g: 0, p: 0, b: 0, $: 0 }
+    ]
+  }
+};
+
+/* ===========================================================
+ * State
+ * =========================================================== */
+const state = {
+  presetName: "Arena Direct — Standard, Play Booster Box (6,000g)",
+  fmt: "Bo1",
+  entry: 6000,
+  maxW: 7,
+  maxL: 2,
+  rewards: [],
+  // Conversions
+  usePacks: false,
+  usePhys: false,
+  packGems: 200,
+  usdGems: 184,
+  // Strategy
+  stopAtLastGem: false,
+  // Player
+  wr: 0.55,
+  capital: 25000,
+  runs: 2000,
+  maxEvents: 20
+};
+
+/* ===========================================================
+ * Math helpers
+ * =========================================================== */
+function logFact(n){ if (logFact.cache === undefined) logFact.cache = [0,0]; const c=logFact.cache; for (let i=c.length;i<=n;i++) c.push(c[i-1]+Math.log(i)); return c[n]; }
+function binom(n,k){ if (k<0||k>n) return 0; return Math.exp(logFact(n)-logFact(k)-logFact(n-k)); }
+
+function winDistribution(W, L, p){
+  const dist = new Array(W + 1).fill(0);
+  for (let k = 0; k < W; k++)
+    dist[k] = binom(k + L - 1, L - 1) * Math.pow(p, k) * Math.pow(1 - p, L);
+  let pW = 0;
+  for (let l = 0; l < L; l++)
+    pW += binom(W + l - 1, W - 1) * Math.pow(p, W) * Math.pow(1 - p, l);
+  dist[W] = pW;
+  return dist;
+}
+
+function expectedMatches(W, L, p){
+  const dist = winDistribution(W, L, p);
+  let m = 0;
+  for (let k = 0; k < W; k++) m += dist[k] * (k + L);
+  for (let l = 0; l < L; l++){
+    const pl = binom(W + l - 1, W - 1) * Math.pow(p, W) * Math.pow(1 - p, l);
+    m += pl * (W + l);
+  }
+  return m;
+}
+
+/** Compute gem-equivalent reward for a given tier under current toggles. */
+function tierGems(t){
+  const gems = t.g || 0;
+  const packs = state.usePacks ? (t.p || 0) * state.packGems : 0;
+  const phys  = state.usePhys  ? (t.$ || 0) * state.usdGems  : 0;
+  return gems + packs + phys;
+}
+
+/** Highest tier index k whose gem reward is > 0. Returns state.maxW if none have gems. */
+function lastGemTier(){
+  for (let k = state.rewards.length - 1; k >= 0; k--){
+    if ((state.rewards[k]?.g || 0) > 0) return k;
+  }
+  return state.maxW;
+}
+
+/** Effective max wins for the race, given the stop-at-last-gem-tier toggle. */
+function effectiveMaxW(){
+  if (!state.stopAtLastGem) return state.maxW;
+  return Math.min(lastGemTier(), state.maxW);
+}
+
+/** Win distribution over 0..state.maxW, padded with zeros above effective max. */
+function effectiveDistribution(p){
+  const W = effectiveMaxW();
+  const L = state.maxL;
+  const raw = winDistribution(W, L, p);
+  const out = new Array(state.maxW + 1).fill(0);
+  for (let k = 0; k <= W; k++) out[k] = raw[k];
+  return out;
+}
+
+function evCalc(){
+  const dist = effectiveDistribution(state.wr);
+  let gross = 0;
+  for (let k = 0; k <= state.maxW; k++) gross += dist[k] * tierGems(state.rewards[k] || {});
+  return { net: gross - state.entry, gross, dist };
+}
+
+function breakEvenWR(){
+  function f(p){
+    const dist = effectiveDistribution(p);
+    let g = 0;
+    for (let k = 0; k <= state.maxW; k++) g += dist[k] * tierGems(state.rewards[k] || {});
+    return g - state.entry;
+  }
+  let lo = 0.01, hi = 0.99;
+  if (f(lo) > 0) return lo;
+  if (f(hi) < 0) return null;
+  for (let i = 0; i < 60; i++){
+    const mid = (lo + hi) / 2;
+    if (f(mid) > 0) hi = mid; else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+function sampleOutcome(dist){
+  const r = Math.random(); let acc = 0;
+  for (let k = 0; k < dist.length; k++){ acc += dist[k]; if (r <= acc) return k; }
+  return dist.length - 1;
+}
+
+function monteCarlo(){
+  const dist = effectiveDistribution(state.wr);
+  const tierGemsArr = state.rewards.map(tierGems);
+  const tierPacksArr = state.rewards.map(r => r.p || 0);
+  const tierBoxesArr = state.rewards.map(r => r.b || 0);
+  const paths = [];
+  const endVals = [];
+  const packsPerPath = [];
+  const boxesPerPath = [];
+  const eventsPerPath = [];
+  let ruin = 0, dbl = 0, atLeastOneBox = 0;
+  for (let r = 0; r < state.runs; r++){
+    let bank = state.capital;
+    let packs = 0, boxes = 0, eventsPlayed = 0;
+    const path = [bank];
+    for (let e = 0; e < state.maxEvents; e++){
+      if (bank < state.entry) break;
+      bank -= state.entry;
+      const k = sampleOutcome(dist);
+      bank += tierGemsArr[k] || 0;
+      packs += tierPacksArr[k] || 0;
+      boxes += tierBoxesArr[k] || 0;
+      eventsPlayed++;
+      path.push(bank);
+    }
+    while (path.length <= state.maxEvents) path.push(path[path.length - 1]);
+    paths.push(path);
+    const end = path[path.length - 1];
+    endVals.push(end);
+    packsPerPath.push(packs);
+    boxesPerPath.push(boxes);
+    eventsPerPath.push(eventsPlayed);
+    if (end < state.entry) ruin++;
+    if (end >= 2 * state.capital) dbl++;
+    if (boxes >= 1) atLeastOneBox++;
+  }
+  endVals.sort((a, b) => a - b);
+  const sum = arr => arr.reduce((s, v) => s + v, 0);
+  return {
+    paths,
+    median: endVals[Math.floor(endVals.length / 2)],
+    mean: sum(endVals) / endVals.length,
+    ruin: ruin / state.runs,
+    double: dbl / state.runs,
+    meanPacks: sum(packsPerPath) / packsPerPath.length,
+    meanBoxes: sum(boxesPerPath) / boxesPerPath.length,
+    meanEvents: sum(eventsPerPath) / eventsPerPath.length,
+    pAtLeastOneBox: atLeastOneBox / state.runs
+  };
+}
+
+/* ===========================================================
+ * UI
+ * =========================================================== */
+const $ = id => document.getElementById(id);
+const fmtGems = n => (n >= 0 ? "" : "−") + Math.abs(Math.round(n)).toLocaleString("en-US");
+const fmtSigned = n => (n >= 0 ? "+" : "−") + Math.abs(Math.round(n)).toLocaleString("en-US");
+const fmtPct = n => (n * 100).toFixed(1) + "%";
+
+function buildPresetDropdown(){
+  const sel = $("preset");
+  sel.innerHTML = "";
+  for (const name of Object.keys(PRESETS)){
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  sel.value = state.presetName;
+}
+
+function buildRewardTable(){
+  const t = $("rewardTable");
+  t.innerHTML = "";
+  const head = document.createElement("tr");
+  head.innerHTML = `<th>Wins</th><th>P(end)</th><th>💎</th><th>Packs</th><th>Boxes</th><th>Phys $</th><th>Total 💎</th>`;
+  t.appendChild(head);
+  const dist = effectiveDistribution(state.wr);
+  const effW = effectiveMaxW();
+  for (let k = 0; k <= state.maxW; k++){
+    const tr = document.createElement("tr");
+    if (k === effW) tr.classList.add("maxrow");
+    if (state.stopAtLastGem && k > effW) tr.classList.add("skipped");
+    const reward = state.rewards[k] || { g:0, p:0, b:0, $:0 };
+
+    const tdK = document.createElement("td");
+    tdK.textContent = k + (k === state.maxW ? " ★" : "");
+    const tdP = document.createElement("td"); tdP.textContent = fmtPct(dist[k]);
+
+    const mkInput = (val, key, step=10) => {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.min = "0"; inp.step = step;
+      inp.value = val ?? 0;
+      inp.addEventListener("input", () => {
+        const v = parseFloat(inp.value || "0");
+        if (!state.rewards[k]) state.rewards[k] = { g:0, p:0, b:0, $:0 };
+        state.rewards[k][key] = isFinite(v) ? v : 0;
+        recomputeTotals();
+        recompute({ skipMC: true });
+      });
+      td.appendChild(inp);
+      return td;
+    };
+
+    const tdG = mkInput(reward.g, "g", 50);
+    const tdPK = mkInput(reward.p, "p", 1);
+    const tdB = mkInput(reward.b, "b", 1);
+    const tdUSD = mkInput(reward.$, "$", 5);
+
+    const tdTot = document.createElement("td");
+    tdTot.classList.add("tot");
+    tdTot.textContent = Math.round(tierGems(reward)).toLocaleString("en-US");
+
+    tr.appendChild(tdK); tr.appendChild(tdP); tr.appendChild(tdG);
+    tr.appendChild(tdPK); tr.appendChild(tdB); tr.appendChild(tdUSD); tr.appendChild(tdTot);
+    t.appendChild(tr);
+  }
+}
+
+function recomputeTotals(){
+  const rows = document.querySelectorAll("#rewardTable tr");
+  for (let i = 1; i < rows.length; i++){
+    const reward = state.rewards[i-1] || { g:0, p:0, b:0, $:0 };
+    rows[i].children[6].textContent = Math.round(tierGems(reward)).toLocaleString("en-US");
+  }
+}
+
+function applyPreset(name){
+  const p = PRESETS[name];
+  if (!p) return;
+  state.presetName = name;
+  state.fmt = p.fmt;
+  state.entry = p.entry;
+  state.maxW = p.maxW;
+  state.maxL = p.maxL;
+  state.rewards = p.rewards.map(r => ({ ...r }));
+  $("fmt").value = p.fmt;
+  $("entry").value = p.entry;
+  $("maxW").value = p.maxW;
+  $("maxL").value = p.maxL;
+  buildRewardTable();
+  updatePills();
+  recompute();
+}
+
+function updatePills(){
+  $("formatPill").textContent = state.fmt;
+  $("formatPill").classList.add("fmt");
+  const effW = effectiveMaxW();
+  const stopping = state.stopAtLastGem && effW < state.maxW;
+  $("winsPill").textContent = stopping
+    ? `${effW}W / ${state.maxL}L (stop)`
+    : `${state.maxW}W / ${state.maxL}L`;
+  $("distMaxW").textContent = effW;
+  $("distMaxL").textContent = state.maxL;
+  // Update stop-toggle hint
+  const lgt = lastGemTier();
+  const skipped = [];
+  for (let k = lgt + 1; k <= state.maxW; k++) skipped.push(k + "w");
+  if ($("stopHint")){
+    if (lgt >= state.maxW){
+      $("stopHint").textContent = "no physical-only tiers — toggle has no effect";
+    } else {
+      $("stopHint").textContent = `concedes after ${lgt} wins · skips ${skipped.join(", ")}`;
+    }
+  }
+}
+
+/* ===========================================================
+ * Charts
+ * =========================================================== */
+let distChart, evChart, mcChart;
+
+function renderDistChart(){
+  const dist = effectiveDistribution(state.wr);
+  const labels = dist.map((_, i) => i.toString());
+  const ctx = document.getElementById("distChart");
+  if (distChart) distChart.destroy();
+  distChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "P(end at k wins)",
+        data: dist,
+        backgroundColor: dist.map((_, i) => i === effectiveMaxW() ? "#ff8a3d" : "#58a6ff"),
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtPct(c.parsed.y) } } },
+      scales: {
+        x: { title: { display: true, text: "Wins", color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { color: "#2a313c" } },
+        y: { ticks: { color: "#8b949e", callback: v => (v*100).toFixed(0)+"%" }, grid: { color: "#2a313c" } }
+      }
+    }
+  });
+}
+
+function renderEVChart(){
+  const xs = [], ys = [];
+  for (let p = 0.30; p <= 0.80 + 1e-9; p += 0.005){
+    xs.push((p*100).toFixed(1));
+    const dist = effectiveDistribution(p);
+    let g = 0;
+    for (let k = 0; k <= state.maxW; k++) g += dist[k] * tierGems(state.rewards[k] || {});
+    ys.push(g - state.entry);
+  }
+  const curLabel = (state.wr*100).toFixed(1);
+  if (evChart) evChart.destroy();
+  evChart = new Chart(document.getElementById("evChart"), {
+    type: "line",
+    data: {
+      labels: xs,
+      datasets: [
+        {
+          label: "Net EV",
+          data: ys,
+          borderColor: "#ffb86b",
+          backgroundColor: "rgba(255,184,107,0.10)",
+          fill: true, tension: 0.15, pointRadius: 0, borderWidth: 2,
+          segment: { borderColor: c => c.p1.parsed.y >= 0 ? "#3fb950" : "#f85149" }
+        },
+        { label: "Break-even", data: ys.map(_ => 0), borderColor: "#8b949e", borderDash: [4,4], pointRadius: 0, borderWidth: 1 },
+        { label: "Current WR", data: xs.map(x => x === curLabel ? Math.max(...ys) : null), borderColor: "#ff8a3d", backgroundColor: "#ff8a3d", pointRadius: 5, showLine: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: "#8b949e" } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtSigned(c.parsed.y)} 💎` } }
+      },
+      scales: {
+        x: { title: { display: true, text: "Match win rate (%)", color: "#8b949e" }, ticks: { color: "#8b949e", maxTicksLimit: 12 }, grid: { color: "#2a313c" } },
+        y: { title: { display: true, text: "Net EV per entry (💎)", color: "#8b949e" }, ticks: { color: "#8b949e", callback: v => v.toLocaleString("en-US") }, grid: { color: "#2a313c" } }
+      }
+    }
+  });
+}
+
+function renderMCChart(mc){
+  const sampleN = Math.min(60, mc.paths.length);
+  const step = mc.paths.length / sampleN;
+  const labels = Array.from({length: state.maxEvents + 1}, (_, i) => i);
+  const datasets = [];
+  for (let i = 0; i < sampleN; i++){
+    datasets.push({
+      data: mc.paths[Math.floor(i * step)],
+      borderColor: "rgba(88,166,255,0.18)",
+      borderWidth: 1, pointRadius: 0, fill: false, tension: 0, label: ""
+    });
+  }
+  const T = mc.paths[0].length;
+  const med = new Array(T);
+  for (let t = 0; t < T; t++){
+    const col = mc.paths.map(p => p[t]).sort((a,b)=>a-b);
+    med[t] = col[Math.floor(col.length/2)];
+  }
+  datasets.push({ data: med, borderColor: "#ff8a3d", borderWidth: 2.5, pointRadius: 0, fill: false, label: "Median path" });
+  datasets.push({ data: labels.map(_ => state.capital), borderColor: "#8b949e", borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, label: "Starting capital" });
+  if (mcChart) mcChart.destroy();
+  mcChart = new Chart(document.getElementById("mcChart"), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: "#8b949e", filter: item => item.text && item.text !== "" } },
+        tooltip: { enabled: false }
+      },
+      scales: {
+        x: { title: { display: true, text: "Events played", color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { color: "#2a313c" } },
+        y: { title: { display: true, text: "Bankroll (💎)", color: "#8b949e" }, ticks: { color: "#8b949e", callback: v => (v/1000).toFixed(0)+"k" }, grid: { color: "#2a313c" } }
+      }
+    }
+  });
+}
+
+/* ===========================================================
+ * Recompute
+ * =========================================================== */
+function recompute({ skipMC = false } = {}){
+  updatePills();
+  const { net, dist } = evCalc();
+  $("evVal").textContent = fmtSigned(net) + " 💎";
+  $("evVal").classList.toggle("good", net >= 0);
+  $("evVal").classList.toggle("bad", net < 0);
+  $("evPct").textContent = state.entry > 0 ? ((net / state.entry) * 100).toFixed(1) + "%" : "—";
+  $("evPct").classList.toggle("good", net >= 0);
+  $("evPct").classList.toggle("bad", net < 0);
+
+  // Update sub-label to reflect what's included
+  const inc = [];
+  inc.push("💎");
+  if (state.usePacks) inc.push("packs");
+  if (state.usePhys) inc.push("physical");
+  $("evSub").textContent = "net of entry · " + inc.join(" + ");
+
+  const be = breakEvenWR();
+  $("beVal").textContent = be === null ? "n/a" : (be * 100).toFixed(1) + "%";
+
+  $("avgMatches").textContent = expectedMatches(effectiveMaxW(), state.maxL, state.wr).toFixed(2);
+
+  // Expected non-monetary rewards per entry
+  let ePacks = 0, eBoxes = 0;
+  for (let k = 0; k <= state.maxW; k++){
+    const r = state.rewards[k] || {};
+    ePacks += dist[k] * (r.p || 0);
+    eBoxes += dist[k] * (r.b || 0);
+  }
+  $("evPacks").textContent = ePacks.toFixed(2);
+  $("evBoxes").textContent = eBoxes.toFixed(3);
+  $("evBoxes").classList.toggle("good", eBoxes > 0.05);
+
+  // Update prob column in reward table
+  const probs = effectiveDistribution(state.wr);
+  const rows = document.querySelectorAll("#rewardTable tr");
+  for (let i = 1; i < rows.length; i++){
+    rows[i].children[1].textContent = fmtPct(probs[i-1]);
+  }
+  recomputeTotals();
+
+  renderDistChart();
+  renderEVChart();
+  if (!skipMC){
+    const mc = monteCarlo();
+    renderMCChart(mc);
+    $("mcMedian").textContent = fmtGems(mc.median) + " 💎";
+    $("mcMean").textContent = fmtGems(mc.mean) + " 💎";
+    $("mcRuin").textContent = (mc.ruin*100).toFixed(1) + "%";
+    $("mcRuin").classList.toggle("bad", mc.ruin > 0.2);
+    $("mcRuin").classList.toggle("good", mc.ruin < 0.05);
+    $("mcDouble").textContent = (mc.double*100).toFixed(1) + "%";
+    $("mcDouble").classList.toggle("good", mc.double > 0.3);
+    $("mcEvents").textContent = mc.meanEvents.toFixed(1);
+    $("mcPacks").textContent = mc.meanPacks.toFixed(1);
+    $("mcBoxes").textContent = mc.meanBoxes.toFixed(2);
+    $("mcBoxes").classList.toggle("good", mc.meanBoxes >= 0.5);
+    $("mcAnyBox").textContent = (mc.pAtLeastOneBox*100).toFixed(1) + "%";
+    $("mcAnyBox").classList.toggle("good", mc.pAtLeastOneBox > 0.5);
+  }
+}
+
+/* ===========================================================
+ * Wire up
+ * =========================================================== */
+function init(){
+  buildPresetDropdown();
+  applyPreset(state.presetName);
+
+  $("preset").addEventListener("change", e => applyPreset(e.target.value));
+  $("fmt").addEventListener("change", e => { state.fmt = e.target.value; updatePills(); recompute(); });
+  $("entry").addEventListener("input", e => { state.entry = Math.max(0, parseInt(e.target.value || "0", 10)); recompute({skipMC:true}); });
+  $("maxW").addEventListener("input", e => {
+    const v = Math.max(1, Math.min(12, parseInt(e.target.value || "1", 10)));
+    state.maxW = v;
+    while (state.rewards.length < v + 1) state.rewards.push({ g:0, p:0, b:0, $:0 });
+    state.rewards.length = v + 1;
+    buildRewardTable(); updatePills(); recompute();
+  });
+  $("maxL").addEventListener("input", e => {
+    state.maxL = Math.max(1, Math.min(6, parseInt(e.target.value || "1", 10)));
+    updatePills(); recompute();
+  });
+
+  // Conversion toggles
+  function syncToggleUI(){
+    $("packsToggle").classList.toggle("on", state.usePacks);
+    $("physToggle").classList.toggle("on", state.usePhys);
+    $("stopToggle").classList.toggle("on", state.stopAtLastGem);
+    $("usePacks").checked = state.usePacks;
+    $("usePhys").checked = state.usePhys;
+    $("stopAtLastGem").checked = state.stopAtLastGem;
+  }
+  $("usePacks").addEventListener("change", e => { state.usePacks = e.target.checked; syncToggleUI(); recompute(); });
+  $("usePhys").addEventListener("change", e => { state.usePhys = e.target.checked; syncToggleUI(); recompute(); });
+  $("stopAtLastGem").addEventListener("change", e => {
+    state.stopAtLastGem = e.target.checked;
+    syncToggleUI();
+    buildRewardTable();   // re-render to apply skipped styling
+    updatePills();
+    recompute();
+  });
+  $("packGems").addEventListener("input", e => { state.packGems = parseFloat(e.target.value) || 0; if (state.usePacks) recompute({skipMC:true}); });
+  $("usdGems").addEventListener("input", e => { state.usdGems = parseFloat(e.target.value) || 0; if (state.usePhys) recompute({skipMC:true}); });
+  syncToggleUI();
+
+  // Player edge
+  $("wr").addEventListener("input", e => {
+    state.wr = parseFloat(e.target.value) / 100;
+    $("wrLbl").textContent = (state.wr*100).toFixed(1);
+    recompute({skipMC:true});
+  });
+  $("wr").addEventListener("change", () => recompute());
+
+  $("cap").addEventListener("input", e => {
+    state.capital = parseInt(e.target.value, 10);
+    $("capLbl").textContent = state.capital.toLocaleString("en-US");
+  });
+  $("cap").addEventListener("change", () => recompute());
+
+  $("runs").addEventListener("input", e => {
+    state.runs = parseInt(e.target.value, 10);
+    $("runsLbl").textContent = state.runs.toLocaleString("en-US");
+  });
+  $("runs").addEventListener("change", () => recompute());
+
+  $("events").addEventListener("input", e => {
+    state.maxEvents = parseInt(e.target.value, 10);
+    $("eventsLbl").textContent = state.maxEvents.toLocaleString("en-US");
+  });
+  $("events").addEventListener("change", () => recompute());
+
+  $("runMC").addEventListener("click", () => recompute());
+  $("resetPreset").addEventListener("click", () => applyPreset(state.presetName));
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
